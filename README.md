@@ -1,174 +1,173 @@
 # ffmpeg-multistream-azure
 
-Azure Container Instances (ACI) 上で ffmpeg を使い、1つの RTMP 入力を YouTube / Facebook Live / X / LinkedIn へ同時配信するツール。
+Multistream to YouTube, Facebook, X (Twitter), and LinkedIn simultaneously using [MediaMTX](https://github.com/bluenviron/mediamtx) + ffmpeg on Azure Container Instances (ACI).
 
-RTMP → HLS → RTMP のような中間変換をせず、**直接 RTMP ファンアウト**するため音声品質の劣化が起きにくい。
+No transcoding. No audio quality loss. Pay only while streaming.
 
----
+## Architecture
 
-## 毎回の使い方
-
-### 配信開始
-
-```bash
-cd ~/ffmpeg-multistream-azure
-
-# 17:00 に自動停止させる場合（分数は都度計算）
-MINUTES=$(( (17*60) - (10#$(date +%H)*60 + 10#$(date +%M)) ))
-./multistream.sh -y -t $MINUTES start
-
-# 手動停止前提で起動する場合
-./multistream.sh -y start
+```
+Your streaming app (Teams, OBS, etc.)
+        │  RTMP
+        ▼
+┌─────────────────────────────────────────┐
+│  Azure Container Instance               │
+│                                         │
+│  MediaMTX  ←── always listening :1935  │
+│      │                                  │
+│      │ runOnReady (publisher connected) │
+│      ▼                                  │
+│  fanout.sh → ffmpeg (-c copy)           │
+│      ├──────────────► YouTube Live      │
+│      ├──────────────► Facebook Live     │
+│      ├──────────────► X (Twitter)       │
+│      └──────────────► LinkedIn Live     │
+└─────────────────────────────────────────┘
 ```
 
-起動完了後に **配信前チェックリスト** が自動表示される。
-チェックリストに表示された「サーバー」と「ストリームキー」を配信元アプリに入力して配信開始。
+**Why MediaMTX instead of raw `ffmpeg -listen 1`?**
 
-### 配信元アプリへの入力値
+`ffmpeg -listen 1` exits on the very first TCP connection that fails the RTMP handshake (port scanners, Azure probes, etc.), causing an unstable reconnect loop. MediaMTX is a proper RTMP server — it handles bad connections gracefully and stays online until Teams connects.
 
-| 項目 | 値 |
-|------|-----|
-| サーバー | `rtmp://<表示された FQDN>:1935/live/` |
-| ストリームキー | `config` の `STREAM_NAME`（デフォルト: `stream`） |
+**Why no audio noise?**
 
-### 配信停止
+ffmpeg uses `-c copy` (stream copy) throughout — no decode/encode cycle. This avoids the HLS segmentation issues that caused audio crackling in solutions like Restreamer.
+
+## Prerequisites
+
+- [Azure CLI](https://docs.microsoft.com/en-us/cli/azure/install-azure-cli) logged in
+- An Azure subscription
+- Docker (for building the image)
+- Stream keys from each platform you want to target
+
+## Quick Start
 
 ```bash
+# 1. Clone and configure
+git clone https://github.com/ebibibi/ffmpeg-multistream-azure.git
+cd ffmpeg-multistream-azure
+cp config.example config
+$EDITOR config   # fill in your stream keys
+
+# 2. Start
+./multistream.sh start
+
+# 3. Point your streaming app at the displayed RTMP URL and start broadcasting
+
+# 4. Stop when done (this stops billing)
 ./multistream.sh stop
 ```
 
-### その他のコマンド
+## Configuration
+
+Copy `config.example` to `config` and set your values:
 
 ```bash
-./multistream.sh status     # FQDN・状態を確認
-./multistream.sh checklist  # 配信前チェックリストを再表示
-./multistream.sh logs       # ffmpeg のログをリアルタイム表示
+# Azure
+RESOURCE_GROUP=multistream-rg
+CONTAINER_NAME=multistream
+LOCATION=japaneast
+CPU=1
+MEMORY=2
+
+# Your broadcasting app connects here with stream key = STREAM_NAME
+STREAM_NAME=stream
+
+# Destinations (leave blank to skip a platform)
+YOUTUBE_RTMP=rtmp://a.rtmp.youtube.com/live2/YOUR_KEY
+FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/YOUR_KEY
+X_RTMP=rtmp://jp.pscp.tv:80/x
+X_KEY=YOUR_X_KEY
 ```
 
----
+Stream keys are passed as **secure environment variables** and are not visible in the Azure Portal.
 
-## 配信先の設定（config ファイル）
+## Commands
 
-`config` ファイルに各プラットフォームのストリームキーを書く。
-**使わないプラットフォームは空欄のまま**にしておけば自動でスキップされる。
-
-```bash
-cp config.example config
-vi config  # または好きなエディタで編集
 ```
+./multistream.sh [-y] [-t <minutes>] <command>
+
+  start      Launch ACI and wait for stream
+  stop       Delete ACI container (stops billing)
+  status     Show state and RTMP ingest URL
+  checklist  Show pre-broadcast checklist
+  logs       Tail container logs (polls every 5s)
+
+Options:
+  -y           Skip confirmation prompt
+  -t <minutes> Auto-stop after N minutes
+```
+
+## Platform Notes
 
 ### YouTube Live
-
-**取得場所**: YouTube Studio → ライブ配信 → ストリームキー
-
-```bash
-# URL の末尾にキーを含む形式
-YOUTUBE_RTMP=rtmps://a.rtmp.youtube.com/live2/xxxx-xxxx-xxxx-xxxx-xxxx
+Combine the server URL and stream key into `YOUTUBE_RTMP`:
 ```
-
-### Facebook Live
-
-**取得場所**: Facebook → ライブ動画を作成 → 「ストリーミングソフトを使用」→ サーバー URL をコピー（キーが末尾に含まれている）
-
-```bash
-# URL の末尾にキーを含む形式
-FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/FB-xxxxxxxxx-x-Abxxxxxxx
+YOUTUBE_RTMP=rtmp://a.rtmp.youtube.com/live2/<YOUR_KEY>
 ```
-
-### X (Twitter)
-
-**取得場所**: X → プロフィール → ライブ配信 → ストリームキー
-
-```bash
-# サーバーURLとキーを別々に指定
-X_RTMP=rtmp://jp.pscp.tv:80/x
-X_KEY=xxxxxxxxxxxx
-```
-
-### LinkedIn Live
-
-**取得場所**: LinkedIn → 投稿 → ライブ動画 → 「ストリーミングソフトを使用」→ 配信サーバーとキーをコピー
-
-```bash
-# サーバーURLとキーを別々に指定（サーバーは毎回変わる場合あり）
-LINKEDIN_RTMP=rtmps://ip-xxx-xxx-xxx-xxx.live-input-li.bitcod.in/live
-LINKEDIN_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-```
-
-> **注意**: LinkedIn のストリームキーとサーバーURLは配信枠を作るたびに変わる。配信前に必ず更新すること。
-
-### 停止忘れ防止通知（任意）
-
-Discord Webhook URL を設定すると、起動時に「課金中」通知が届く。
-
-```bash
-NOTIFY_DISCORD_URL=https://discord.com/api/webhooks/xxxxxx/xxxxxx
-```
+Where to find: **YouTube Studio → Go Live → Stream tab**
 
 ---
 
-## 初回セットアップ
+### Facebook Live
+Facebook **requires** `rtmps://` (TLS). Combine server + key:
+```
+FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/<YOUR_KEY>
+```
+Where to find: **Facebook → Live Video → Use Stream Key**
 
-### 前提条件
+---
 
-- Azure CLI (`az`) インストール済み・ログイン済み
-- Docker インストール済み
-- `openssl` インストール済み
+### X (Twitter)
+> ⚠️ **Important:** X only accepts **one live session per stream key**. Once a session ends, you must go to `studio.twitter.com` and create a **new broadcast** to get a fresh key. The old key will not work again.
 
-### 手順
+```
+X_RTMP=rtmp://jp.pscp.tv:80/x
+X_KEY=<YOUR_KEY>
+```
+Where to find: **studio.twitter.com → Broadcasts → Create a broadcast**
 
-**1. Docker イメージをビルドして Docker Hub へ push**
+---
+
+### LinkedIn Live
+> ⚠️ **Important:** The RTMP ingest URL **changes with every new LinkedIn Live event**. Update both `LINKEDIN_RTMP` and `LINKEDIN_KEY` before each session.
+
+```
+LINKEDIN_RTMP=rtmps://<YOUR_INGEST_HOST>/live
+LINKEDIN_KEY=<YOUR_KEY>
+```
+Where to find: **LinkedIn → Create a post → Live video → Configure stream**
+
+## Building the Docker Image
 
 ```bash
 docker build -t ebibibi/ffmpeg-multistream:latest .
-docker login
 docker push ebibibi/ffmpeg-multistream:latest
 ```
 
-**2. config ファイルを作成**
+Or use the pre-built image from Docker Hub: `ebibibi/ffmpeg-multistream:latest`
+
+## Running Tests
 
 ```bash
-cp config.example config
-# config を編集してストリームキーを入力（上記「配信先の設定」参照）
+# Smoke test: verifies MediaMTX starts and listens on :1935
+bash test/smoke-test.sh
 ```
 
-**3. Azure の準備**
+## Cost
 
-```bash
-az login
-az account set --subscription "MVP_WebSites"  # 使用するサブスクリプションを選択
+ACI is billed per second of runtime. A typical 1 vCPU / 2 GB container in Japan East costs roughly **¥0.0016/sec** (~¥6/hour). Use `./multistream.sh stop` when done, or pass `-t <minutes>` for an auto-stop timer.
 
-# Microsoft.ContainerInstance が未登録の場合（初回のみ）
-az provider register --namespace Microsoft.ContainerInstance --wait
-```
+## How It Works
 
----
+1. `./multistream.sh start` creates an ACI container with stream keys injected as secure env vars.
+2. MediaMTX starts inside the container and listens on port 1935.
+3. Your streaming app (Teams, OBS, etc.) connects and publishes to `rtmp://<fqdn>:1935/live/<STREAM_NAME>`.
+4. MediaMTX triggers `runOnReady` → runs `fanout.sh`.
+5. `fanout.sh` builds and executes an `ffmpeg` command that reads from MediaMTX locally and writes to all configured destinations simultaneously using `-c copy` (no transcoding).
+6. When the source disconnects, MediaMTX kills ffmpeg automatically.
+7. `./multistream.sh stop` deletes the container and ends billing.
 
-## 仕組み
+## License
 
-```
-配信元アプリ（Teams 等）
-    │ RTMP
-    ▼
-ffmpeg on ACI（rtmp://FQDN:1935/live/stream で待ち受け）
-    │ RTMP コピー（エンコードなし）
-    ├──▶ YouTube Live
-    ├──▶ Facebook Live
-    ├──▶ X (Twitter)
-    └──▶ LinkedIn Live
-```
-
-ffmpeg は `-c copy` モードで動作するためトランスコードは行わない。
-ストリームが切断されると自動で再接続待機状態に戻る。
-
----
-
-## 料金の目安
-
-ACI は**起動中のみ**課金される（停止・削除すればゼロ）。
-
-| スペック | 2 時間あたりの目安 |
-|---|---|
-| 4 vCPU / 4 GB | 約 ¥120 |
-
-`-t <分>` オプションで自動停止タイマーをセットすることを強く推奨。
+MIT

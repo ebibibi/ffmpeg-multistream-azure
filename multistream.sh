@@ -13,7 +13,7 @@ else
     exit 1
 fi
 
-# az container コマンドが壊れているため az rest を使う（API バージョン固定）
+# az container commands use an outdated API version — use az rest with a pinned version instead
 ACI_API="2023-05-01"
 
 _aci_url() {
@@ -45,15 +45,15 @@ usage() {
 Usage: $0 [-y] [-t <minutes>] <command>
 
 Options:
-    -y           - 確認プロンプトをスキップ
-    -t <minutes> - 指定分後に自動停止 (0 = 無効)
+    -y           - Skip confirmation prompt
+    -t <minutes> - Auto-stop after specified minutes (0 = disabled)
 
 Commands:
-    start      - ACI を起動して配信待機
-    stop       - ACI を削除（課金停止）
-    status     - 状態と接続先URLを表示
-    checklist  - 配信前チェックリストを表示
-    logs       - コンテナログを表示
+    start      - Launch ACI container and wait for stream
+    stop       - Delete ACI container (stops billing)
+    status     - Show container state and RTMP URL
+    checklist  - Show pre-broadcast checklist
+    logs       - Show container logs (polls every 5s)
 
 Configuration: $CONFIG_FILE
 EOF
@@ -73,31 +73,31 @@ notify_discord() {
 }
 
 confirm_start() {
-    echo "=== 起動設定の確認 ==="
+    echo "=== Launch Configuration ==="
     echo ""
     local account sub
-    account=$(az account show --query "user.name" -o tsv 2>/dev/null || echo "(未ログイン)")
-    sub=$(az account show --query "name" -o tsv 2>/dev/null || echo "(未選択)")
-    echo "Azureアカウント : $account"
-    echo "サブスクリプション: $sub"
+    account=$(az account show --query "user.name" -o tsv 2>/dev/null || echo "(not logged in)")
+    sub=$(az account show --query "name" -o tsv 2>/dev/null || echo "(none)")
+    echo "Azure account      : $account"
+    echo "Subscription       : $sub"
     echo ""
-    echo "リソースグループ: $RESOURCE_GROUP ($LOCATION)"
-    echo "コンテナ        : $CONTAINER_NAME ($CPU vCPU / ${MEMORY}GB)"
-    echo "イメージ        : $IMAGE"
+    echo "Resource group     : $RESOURCE_GROUP ($LOCATION)"
+    echo "Container          : $CONTAINER_NAME ($CPU vCPU / ${MEMORY}GB RAM)"
+    echo "Image              : $IMAGE"
     echo ""
-    echo "配信先:"
-    [ -n "${YOUTUBE_RTMP:-}"  ] && echo "  [有効] YouTube Live"
-    [ -n "${FACEBOOK_RTMP:-}" ] && echo "  [有効] Facebook Live"
-    [ -n "${X_RTMP:-}"        ] && echo "  [有効] X (Twitter)"
-    [ -n "${LINKEDIN_RTMP:-}" ] && echo "  [有効] LinkedIn Live"
+    echo "Destinations:"
+    [ -n "${YOUTUBE_RTMP:-}"  ] && echo "  [enabled] YouTube Live"
+    [ -n "${FACEBOOK_RTMP:-}" ] && echo "  [enabled] Facebook Live"
+    [ -n "${X_RTMP:-}"        ] && echo "  [enabled] X (Twitter)"
+    [ -n "${LINKEDIN_RTMP:-}" ] && echo "  [enabled] LinkedIn Live"
     echo ""
 
     if $AUTO_YES; then
-        echo "自動確認（-y オプション）"
+        echo "Auto-confirmed (-y flag)"
         return 0
     fi
 
-    read -p "この設定で起動しますか? [y/N]: " answer
+    read -p "Start with this configuration? [y/N]: " answer
     case "$answer" in
         [yY]|[yY][eE][sS]) return 0 ;;
         *) exit 0 ;;
@@ -109,14 +109,14 @@ cmd_start() {
     echo ""
 
     if ! az group show --name "$RESOURCE_GROUP" &>/dev/null; then
-        echo "リソースグループを作成: $RESOURCE_GROUP"
+        echo "Creating resource group: $RESOURCE_GROUP"
         az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
     fi
 
-    echo "ACI を起動中..."
+    echo "Starting ACI container..."
     DNS_LABEL="${CONTAINER_NAME}-$(openssl rand -hex 4)"
 
-    # ストリームキーは secure-environment-variables で渡す（Portal に平文表示しない）
+    # Stream keys are passed as secure environment variables (hidden in Azure Portal)
     az container create \
         --resource-group "$RESOURCE_GROUP" \
         --name "$CONTAINER_NAME" \
@@ -148,40 +148,40 @@ cmd_start() {
         nohup bash -c "sleep $((STOP_AFTER_MINUTES * 60)) && cd '$SCRIPT_DIR' && ./multistream.sh -y stop" \
             &>/dev/null &
         echo ""
-        echo "⏱ 自動停止タイマー: ${STOP_AFTER_MINUTES}分後（約 ${stop_time}）"
+        echo "Auto-stop timer set: ${STOP_AFTER_MINUTES} min (around ${stop_time})"
     fi
 
     local fqdn
     fqdn=$(get_fqdn)
     local timer_msg
     if [ "$STOP_AFTER_MINUTES" -gt 0 ]; then
-        timer_msg="⏱ ${STOP_AFTER_MINUTES}分後に自動停止"
+        timer_msg="Auto-stop in ${STOP_AFTER_MINUTES} min"
     else
-        timer_msg="⚠️ 自動停止なし。終わったら忘れずに停止してね"
+        timer_msg="⚠️ No auto-stop. Remember to run: ./multistream.sh stop"
     fi
-    notify_discord "🔴 **multistream 起動中（課金中）**\n\`rtmp://${fqdn}:1935/live/${STREAM_NAME:-stream}\`\n${timer_msg}\n\n停止: \`cd ~/ffmpeg-multistream-azure && ./multistream.sh stop\`"
+    notify_discord "🔴 **multistream started (billing active)**\n\`rtmp://${fqdn}:1935/live/${STREAM_NAME:-stream}\`\n${timer_msg}\n\nTo stop: \`cd ~/ffmpeg-multistream-azure && ./multistream.sh stop\`"
 }
 
 cmd_stop() {
     if ! aci_exists; then
-        echo "コンテナが見つかりません。"
+        echo "Container not found."
         return 0
     fi
-    echo "ACI を削除中..."
+    echo "Deleting ACI container..."
     aci_delete
-    echo "削除完了。課金停止。"
+    echo "Deleted. Billing stopped."
 }
 
 cmd_status() {
     if ! aci_exists; then
-        echo "コンテナが見つかりません（停止中）"
+        echo "Container not found (stopped)"
         exit 1
     fi
     local fqdn state
     fqdn=$(get_fqdn)
     state=$(aci_get --query "properties.instanceView.state" -o tsv)
-    echo "状態: $state"
-    echo "RTMP: rtmp://${fqdn}:1935/live/${STREAM_NAME:-stream}"
+    echo "State : $state"
+    echo "RTMP  : rtmp://${fqdn}:1935/live/${STREAM_NAME:-stream}"
 }
 
 cmd_checklist() {
@@ -191,40 +191,40 @@ cmd_checklist() {
     fi
 
     echo "=================================================="
-    echo "  配信前チェックリスト"
+    echo "  Pre-Broadcast Checklist"
     echo "=================================================="
     echo ""
 
     if [ -n "$fqdn" ]; then
-        echo "[配信元アプリの設定]"
-        echo "  サーバー      : rtmp://${fqdn}:1935/live/"
-        echo "  ストリームキー: ${STREAM_NAME:-stream}"
+        echo "[Streaming app settings]"
+        echo "  Server     : rtmp://${fqdn}:1935/live/"
+        echo "  Stream key : ${STREAM_NAME:-stream}"
     else
-        echo "[配信元アプリの設定]  ※ start 後に FQDN が確定します"
-        echo "  ストリームキー: ${STREAM_NAME:-stream}  (固定値)"
+        echo "[Streaming app settings]  (* FQDN will be set after start)"
+        echo "  Stream key : ${STREAM_NAME:-stream}  (fixed)"
     fi
 
     echo ""
-    echo "[配信先チェック]  各プラットフォームのストリームキー有効期限を確認"
+    echo "[Destination check]  Verify stream keys are active on each platform"
     [ -n "${YOUTUBE_RTMP:-}"  ] && echo "  [ ] YouTube Live"
     [ -n "${FACEBOOK_RTMP:-}" ] && echo "  [ ] Facebook Live"
-    [ -n "${X_RTMP:-}"        ] && echo "  [ ] X (Twitter)"
-    [ -n "${LINKEDIN_RTMP:-}" ] && echo "  [ ] LinkedIn Live"
+    [ -n "${X_RTMP:-}"        ] && echo "  [ ] X (Twitter)  * Requires a new key for each session"
+    [ -n "${LINKEDIN_RTMP:-}" ] && echo "  [ ] LinkedIn Live  * Server URL changes each session"
 
     echo ""
-    echo "[配信開始手順]"
-    echo "  1. 上記のサーバーとキーを配信元アプリに入力"
-    echo "  2. 配信開始 → MediaMTX が受信し ffmpeg が各プラットフォームへ転送"
-    echo "  3. 各プラットフォームで映像・音声を確認"
-    echo "  4. 終了後: ./multistream.sh stop"
+    echo "[How to start]"
+    echo "  1. Enter the server and stream key in your streaming app"
+    echo "  2. Start broadcasting → MediaMTX receives and ffmpeg fans out to each platform"
+    echo "  3. Verify video and audio on each platform"
+    echo "  4. When done: ./multistream.sh stop"
 }
 
 cmd_logs() {
     if ! aci_exists; then
-        echo "コンテナが見つかりません。"
+        echo "Container not found."
         exit 1
     fi
-    echo "ログを表示中... (Ctrl+C で停止、5秒ごとに更新)"
+    echo "Streaming logs... (Ctrl+C to stop, updates every 5s)"
     echo "---"
     local prev_lines=0
     while true; do

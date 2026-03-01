@@ -1,36 +1,51 @@
-# ffmpeg multistream Azure Configuration
+# ffmpeg-multistream-azure configuration
+# Copy this file to "config" and fill in your stream keys.
 
-# Azureリソース設定
+# --- Azure resource settings ---
 RESOURCE_GROUP=multistream-rg
 CONTAINER_NAME=multistream
 LOCATION=japaneast
 
-# コンテナスペック
-CPU=4
-MEMORY=4
+# --- Container spec ---
+CPU=1
+MEMORY=2
 
-# コンテナイメージ（Docker Hub）
+# --- Docker image ---
 IMAGE=ebibibi/ffmpeg-multistream:latest
 
-# RTMP入力ストリーム名（配信元アプリで指定するキー）
+# --- Stream key used by your broadcasting app (e.g. Teams, OBS) ---
 STREAM_NAME=stream
 
-# 配信先（使わないものは空欄のまま）
+# -----------------------------------------------------------------------
+# Streaming destinations — leave blank to disable a platform
+# -----------------------------------------------------------------------
 
-# YouTube Live（URL にストリームキーを含む形式）
-YOUTUBE_RTMP=rtmps://a.rtmp.youtube.com/live2/YOUR_KEY_HERE
+# YouTube Live
+# Server + key combined in one URL
+# Where to find: YouTube Studio → Go Live → Stream tab → Stream URL + Stream key
+YOUTUBE_RTMP=rtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY
 
-# Facebook Live（URL にストリームキーを含む形式）
-FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/FB-YOUR_KEY_HERE
+# Facebook Live
+# Facebook requires rtmps:// (TLS). Key expires when the stream ends.
+# Where to find: Facebook → Live Video → Use Stream Key
+FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/YOUR_STREAM_KEY
 
-# X (Twitter) — サーバーURLとキーを別々に指定
+# X (Twitter)
+# WARNING: X only accepts ONE live session per key. You MUST create a new Live Event
+#          on X for each broadcast — the old key will not work again.
+# Where to find: studio.twitter.com → Broadcasts → Create a broadcast
 X_RTMP=rtmp://jp.pscp.tv:80/x
 X_KEY=YOUR_X_STREAM_KEY
 
-# LinkedIn Live — サーバーURLとキーを別々に指定
-LINKEDIN_RTMP=rtmps://YOUR_LINKEDIN_HOST/live
+# LinkedIn Live
+# WARNING: The RTMP ingest URL changes with every new LinkedIn Live event.
+#          Update BOTH fields before each session.
+# Where to find: LinkedIn → Create a post → Live video → Configure stream
+LINKEDIN_RTMP=rtmps://YOUR_LINKEDIN_INGEST_HOST/live
 LINKEDIN_KEY=YOUR_LINKEDIN_STREAM_KEY
 
-# 起動時 Discord 通知（省略可）
-# Discord Webhook URL を設定すると停止忘れ防止通知が届く
+# -----------------------------------------------------------------------
+# Optional: Discord webhook URL for start/stop billing notifications
+# Leave blank to disable.
+# -----------------------------------------------------------------------
 NOTIFY_DISCORD_URL=

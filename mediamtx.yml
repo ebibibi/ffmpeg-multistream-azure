@@ -1,25 +1,27 @@
-# MediaMTX v1.x 設定 — ffmpeg-multistream-azure
-# Teams から RTMP を受け取り、配信開始時に fanout.sh を起動してマルチストリームする
+# MediaMTX configuration for ffmpeg-multistream-azure
+#
+# MediaMTX acts as a persistent RTMP server. When Teams (or any RTMP source)
+# starts publishing, runOnReady fires fanout.sh which fans out via ffmpeg.
 
 logLevel: info
 
-# 不要なプロトコルを無効化（RTMP のみ使用）
+# Disable unused protocols — RTMP only
 rtsp: false
 hls: false
 webrtc: false
 srt: false
 
-# RTMP サーバー設定
+# RTMP server
 rtmp: true
 rtmpAddress: :1935
 rtmpEncryption: "no"
 
-# パス設定
-# all_others: 明示的に設定されていない任意のパスにマッチ（Teams が送るパスを自動受付）
+# Path configuration
+# all_others matches any path not explicitly defined (accepts whatever the streaming app sends)
 paths:
   all_others:
-    # ストリームが準備完了（publisher 接続）したら fanout.sh を起動
-    # 環境変数 MTX_PATH にパス名（例: live/stream）が入る
+    # Run fanout.sh when a publisher connects and the stream is ready
+    # MTX_PATH env var will contain the stream path (e.g. live/stream)
     runOnReady: /fanout.sh
-    # 配信が終了したら ffmpeg も自動停止（再起動しない）
+    # Do not restart fanout.sh after the stream ends
     runOnReadyRestart: false

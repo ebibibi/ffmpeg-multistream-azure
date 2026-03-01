@@ -1,34 +1,34 @@
 #!/bin/sh
-# MediaMTX の runOnPublish フックから呼ばれるファンアウトスクリプト
+# fanout.sh — called by MediaMTX via runOnReady when a publisher connects
 #
-# MediaMTX が設定する環境変数:
-#   MNTX_PATH      - 配信パス (例: live/stream)
+# MediaMTX-provided environment variables:
+#   MTX_PATH       - stream path (e.g. live/stream)
 #
-# ACI 起動時に渡されるストリームキー（secure-environment-variables）:
-#   YOUTUBE_RTMP   - YouTube Live RTMP URL（例: rtmp://a.rtmp.youtube.com/live2/XXXX）
-#   FACEBOOK_RTMP  - Facebook Live RTMP URL
-#   X_RTMP         - X (Twitter) RTMP サーバー URL
-#   X_KEY          - X stream key
-#   LINKEDIN_RTMP  - LinkedIn Live RTMP サーバー URL
+# ACI secure environment variables (stream keys):
+#   YOUTUBE_RTMP   - YouTube Live RTMP URL (e.g. rtmp://a.rtmp.youtube.com/live2/KEY)
+#   FACEBOOK_RTMP  - Facebook Live RTMP URL (rtmps:// required by Facebook)
+#   X_RTMP         - X (Twitter) RTMP server URL
+#   X_KEY          - X stream key (must create a new Live Event for each session)
+#   LINKEDIN_RTMP  - LinkedIn Live RTMP server URL (changes each session)
 #   LINKEDIN_KEY   - LinkedIn stream key
 
 INPUT="rtmp://127.0.0.1:1935/${MTX_PATH}"
 
-echo "[fanout $(date)] 配信開始: path=${MTX_PATH}"
-echo "[fanout] 入力: $INPUT"
-[ -n "$YOUTUBE_RTMP"  ] && echo "[fanout] 出力: YouTube Live"
-[ -n "$FACEBOOK_RTMP" ] && echo "[fanout] 出力: Facebook Live"
-[ -n "$X_RTMP"        ] && echo "[fanout] 出力: X (Twitter)"
-[ -n "$LINKEDIN_RTMP" ] && echo "[fanout] 出力: LinkedIn Live"
+echo "[fanout $(date)] Stream started: path=${MTX_PATH}"
+echo "[fanout] Input : $INPUT"
+[ -n "$YOUTUBE_RTMP"  ] && echo "[fanout] Output: YouTube Live"
+[ -n "$FACEBOOK_RTMP" ] && echo "[fanout] Output: Facebook Live"
+[ -n "$X_RTMP"        ] && echo "[fanout] Output: X (Twitter)"
+[ -n "$LINKEDIN_RTMP" ] && echo "[fanout] Output: LinkedIn Live"
 
-# POSIX sh で ffmpeg コマンドを安全に組み立てる（クォート保持のため set -- パターンを使用）
-# ffmpeg では出力オプションは出力 URL の前に置く必要がある
+# Build the ffmpeg command safely using POSIX sh set -- pattern (preserves quoting)
+# Output options must come BEFORE each output URL in ffmpeg
 set -- ffmpeg -loglevel warning -i "$INPUT"
 
 [ -n "$YOUTUBE_RTMP"  ] && set -- "$@" -c copy -f flv "$YOUTUBE_RTMP"
 [ -n "$FACEBOOK_RTMP" ] && set -- "$@" -c copy -f flv "$FACEBOOK_RTMP"
 
-# X と LinkedIn は playpath が URL と別になっているため個別指定
+# X and LinkedIn use a separate playpath from the server URL
 if [ -n "$X_RTMP" ] && [ -n "$X_KEY" ]; then
     set -- "$@" -rtmp_playpath "$X_KEY" -rtmp_flashver FMLE/3.0 -c copy -f flv "$X_RTMP"
 fi
