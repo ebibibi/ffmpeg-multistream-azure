@@ -119,7 +119,10 @@ Where to find: **Facebook → Live Video → Use Stream Key**
 ---
 
 ### X (Twitter)
-> ⚠️ **Important:** X does **not** support reconnection to an active session. If the stream is interrupted, the broadcast ends immediately and cannot be resumed. The stream key itself is persistent and can be reused for future broadcasts.
+> ⚠️ **Important:** X does **not** support mid-stream reconnection.
+> - ✅ Your stream key is **permanent** — the same key works for every broadcast, forever
+> - ❌ If the stream is interrupted, that broadcast session ends immediately and cannot be resumed
+> - The next time you stream with the same key, X starts a **new** broadcast session automatically
 
 ```
 X_RTMP=rtmp://jp.pscp.tv:80/x

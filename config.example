@@ -31,8 +31,9 @@ YOUTUBE_RTMP=rtmp://a.rtmp.youtube.com/live2/YOUR_STREAM_KEY
 FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/YOUR_STREAM_KEY
 
 # X (Twitter)
-# WARNING: X does not support reconnection — if the stream is interrupted, the broadcast ends
-#          and cannot be resumed. The stream key itself is reusable across sessions.
+# Your stream key is permanent — reuse it for every session, no need to generate a new one.
+# WARNING: X does not support mid-stream reconnection. If the stream is interrupted, that
+#          broadcast session ends permanently. The next stream with the same key starts a new session.
 # Where to find: studio.twitter.com → Broadcasts → Create a broadcast
 X_RTMP=rtmp://jp.pscp.tv:80/x
 X_KEY=YOUR_X_STREAM_KEY
