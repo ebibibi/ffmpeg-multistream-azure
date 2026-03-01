@@ -1,0 +1,36 @@
+# ffmpeg multistream Azure Configuration
+
+# Azureリソース設定
+RESOURCE_GROUP=multistream-rg
+CONTAINER_NAME=multistream
+LOCATION=japaneast
+
+# コンテナスペック
+CPU=4
+MEMORY=4
+
+# コンテナイメージ（Docker Hub）
+IMAGE=ebibibi/ffmpeg-multistream:latest
+
+# RTMP入力ストリーム名（配信元アプリで指定するキー）
+STREAM_NAME=stream
+
+# 配信先（使わないものは空欄のまま）
+
+# YouTube Live（URL にストリームキーを含む形式）
+YOUTUBE_RTMP=rtmps://a.rtmp.youtube.com/live2/YOUR_KEY_HERE
+
+# Facebook Live（URL にストリームキーを含む形式）
+FACEBOOK_RTMP=rtmps://live-api-s.facebook.com:443/rtmp/FB-YOUR_KEY_HERE
+
+# X (Twitter) — サーバーURLとキーを別々に指定
+X_RTMP=rtmp://jp.pscp.tv:80/x
+X_KEY=YOUR_X_STREAM_KEY
+
+# LinkedIn Live — サーバーURLとキーを別々に指定
+LINKEDIN_RTMP=rtmps://YOUR_LINKEDIN_HOST/live
+LINKEDIN_KEY=YOUR_LINKEDIN_STREAM_KEY
+
+# 起動時 Discord 通知（省略可）
+# Discord Webhook URL を設定すると停止忘れ防止通知が届く
+NOTIFY_DISCORD_URL=
