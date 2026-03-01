@@ -119,7 +119,7 @@ Where to find: **Facebook → Live Video → Use Stream Key**
 ---
 
 ### X (Twitter)
-> ⚠️ **Important:** X only accepts **one live session per stream key**. Once a session ends, you must go to `studio.twitter.com` and create a **new broadcast** to get a fresh key. The old key will not work again.
+> ⚠️ **Important:** X does **not** support reconnection to an active session. If the stream is interrupted, the broadcast ends immediately and cannot be resumed. The stream key itself is persistent and can be reused for future broadcasts.
 
 ```
 X_RTMP=rtmp://jp.pscp.tv:80/x
