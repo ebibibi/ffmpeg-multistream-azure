@@ -1,10 +1,10 @@
-FROM alpine:3.20
+FROM bluenviron/mediamtx:latest-ffmpeg
 
-RUN apk add --no-cache ffmpeg
+# MediaMTX 設定ファイルを上書き
+COPY mediamtx.yml /mediamtx.yml
 
-COPY container-start.sh /start.sh
-RUN chmod +x /start.sh
+# Teams 接続時に起動するファンアウトスクリプト
+COPY fanout.sh /fanout.sh
+RUN chmod +x /fanout.sh
 
 EXPOSE 1935
-
-ENTRYPOINT ["/bin/sh", "/start.sh"]

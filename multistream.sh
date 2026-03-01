@@ -13,6 +13,33 @@ else
     exit 1
 fi
 
+# az container コマンドが壊れているため az rest を使う（API バージョン固定）
+ACI_API="2023-05-01"
+
+_aci_url() {
+    local subid
+    subid=$(az account show --query id -o tsv 2>/dev/null)
+    echo "https://management.azure.com/subscriptions/${subid}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.ContainerInstance/containerGroups/${CONTAINER_NAME}"
+}
+
+aci_exists() {
+    az rest --method get --url "$(_aci_url)?api-version=${ACI_API}" &>/dev/null 2>&1
+}
+
+aci_get() {
+    az rest --method get --url "$(_aci_url)?api-version=${ACI_API}" "$@" 2>/dev/null
+}
+
+aci_delete() {
+    az rest --method delete --url "$(_aci_url)?api-version=${ACI_API}" --output none 2>&1
+}
+
+aci_logs() {
+    az rest --method get \
+        --url "$(_aci_url)/containers/${CONTAINER_NAME}/logs?api-version=${ACI_API}" \
+        --query "content" -o tsv 2>/dev/null
+}
+
 usage() {
     cat << EOF
 Usage: $0 [-y] [-t <minutes>] <command>
@@ -34,11 +61,7 @@ EOF
 }
 
 get_fqdn() {
-    az container show \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$CONTAINER_NAME" \
-        --query "ipAddress.fqdn" \
-        --output tsv 2>/dev/null
+    aci_get --query "properties.ipAddress.fqdn" -o tsv 2>/dev/null
 }
 
 notify_discord() {
@@ -140,36 +163,30 @@ cmd_start() {
 }
 
 cmd_stop() {
-    if ! az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_NAME" &>/dev/null; then
+    if ! aci_exists; then
         echo "コンテナが見つかりません。"
         return 0
     fi
     echo "ACI を削除中..."
-    az container delete \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$CONTAINER_NAME" \
-        --yes --output none
+    aci_delete
     echo "削除完了。課金停止。"
 }
 
 cmd_status() {
-    if ! az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_NAME" &>/dev/null; then
+    if ! aci_exists; then
         echo "コンテナが見つかりません（停止中）"
         exit 1
     fi
     local fqdn state
     fqdn=$(get_fqdn)
-    state=$(az container show \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$CONTAINER_NAME" \
-        --query "instanceView.state" -o tsv)
+    state=$(aci_get --query "properties.instanceView.state" -o tsv)
     echo "状態: $state"
     echo "RTMP: rtmp://${fqdn}:1935/live/${STREAM_NAME:-stream}"
 }
 
 cmd_checklist() {
     local fqdn=""
-    if az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_NAME" &>/dev/null 2>&1; then
+    if aci_exists; then
         fqdn=$(get_fqdn)
     fi
 
@@ -197,16 +214,30 @@ cmd_checklist() {
     echo ""
     echo "[配信開始手順]"
     echo "  1. 上記のサーバーとキーを配信元アプリに入力"
-    echo "  2. 配信開始 → ffmpeg が自動的に各プラットフォームへ転送"
+    echo "  2. 配信開始 → MediaMTX が受信し ffmpeg が各プラットフォームへ転送"
     echo "  3. 各プラットフォームで映像・音声を確認"
     echo "  4. 終了後: ./multistream.sh stop"
 }
 
 cmd_logs() {
-    az container logs \
-        --resource-group "$RESOURCE_GROUP" \
-        --name "$CONTAINER_NAME" \
-        --follow
+    if ! aci_exists; then
+        echo "コンテナが見つかりません。"
+        exit 1
+    fi
+    echo "ログを表示中... (Ctrl+C で停止、5秒ごとに更新)"
+    echo "---"
+    local prev_lines=0
+    while true; do
+        local all_logs
+        all_logs=$(aci_logs)
+        local total_lines
+        total_lines=$(echo "$all_logs" | wc -l)
+        if [ "$total_lines" -gt "$prev_lines" ]; then
+            echo "$all_logs" | tail -n "$((total_lines - prev_lines))"
+            prev_lines=$total_lines
+        fi
+        sleep 5
+    done
 }
 
 # Main
