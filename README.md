@@ -159,7 +159,9 @@ bash test/smoke-test.sh
 
 ## Cost
 
-ACI is billed per second of runtime. A typical 1 vCPU / 2 GB container in Japan East costs roughly **¥0.0016/sec** (~¥6/hour). Use `./multistream.sh stop` when done, or pass `-t <minutes>` for an auto-stop timer.
+ACI is billed per second of runtime. A typical 1 vCPU / 2 GB container in Japan East costs roughly **~¥10/hour** (vCPU ~¥8 + Memory ~¥2, measured April 2026). Use `./multistream.sh stop` when done, or pass `-t <minutes>` for an auto-stop timer.
+
+**Network (egress):** Azure includes **100 GB/month of free outbound data**. A 5-hour session streaming at 6 Mbps to 3 platforms generates ~40 GB — well within the free tier. No extra charges unless you exceed 100 GB/month across the subscription.
 
 ## How It Works
 
